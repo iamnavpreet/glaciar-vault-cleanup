@@ -20,6 +20,7 @@ def cli_args():
     parser.add_argument("-vaultname", help="Provide Vault Name", action="store")
     parser.add_argument("-deleteall", help="Delete All items", action="store_true")
     parser.add_argument("-region", help="List All Glacier", required=True, action="store")
+    parser.add_argument("-profile", help="AWS Profile for credentails", action="store")
 
     return parser.parse_args()
 
@@ -40,7 +41,7 @@ def get_all_vaults(glacier_client):
 
     if response['VaultList']:
         logging.info("Found {} Vaults.".format(len(response['VaultList'])))
-        for number,vault in enumerate(response['VaultList']):
+        for number, vault in enumerate(response['VaultList']):
             logging.info("Vault {} -> {}".format(number + 1, vault['VaultName']))
     else:
         logging.info("No Vault Found")
@@ -63,17 +64,16 @@ def validate_yes_no():
 def check_job_for_vault(glacier_client, vault):
     job_id = get_if_job_exists_for_vault(glacier_client, vault)
     if job_id:
-        logging.info("We have Already Job for same Vault-> {}. ID ->".format(vault, job_id))
+        logging.info("We have Already Job for same Vault-> {}. ID -> {}".format(vault, job_id))
         job = glacier_client.describe_job(vaultName=vault, jobId=job_id)
         logging.info("Job status--> {}. Created on -> {}".format(job["StatusCode"], job["CreationDate"]))
         if job["StatusCode"] == "InProgress":
             logging.info("Job are usualy ready within 4hours of request with Amazon")
             logging.info('Inventory not ready, Kindly wait for 4 hrs ..')
-            return job["StatusCode"]
+            return {"status": job["StatusCode"]}
         elif job["StatusCode"] == "Succeeded":
-            logging.info("Job are usualy ready within 4hours of request with Amazon")
             logging.info('Inventory is ready.')
-            return job["JobId"]
+            return {"status": "Succeeded", "id": job["JobId"]}
     else:
         logging.info("No Job found for the Vault provided")
         logging.info("DO you want to intiate Job?")
@@ -83,7 +83,7 @@ def check_job_for_vault(glacier_client, vault):
 
             logging.info("Intiated Job with ID -> {}".format(job["jobId"]))
             logging.info("Request you to check after 4 hrs for the same..")
-            return "JobOngoing"
+            return {"status": "JobOngoing"}
         else:
             logging.info("inventory retrieval cancelled...")
             return False
@@ -93,7 +93,7 @@ def delete_with_wait(glacier_client, vault, archive):
     count = 0
     while True:
         try:
-            glacier_client.delete_archive(vaultName=vault, archiveId=archive)
+            response = glacier_client.delete_archive(vaultName=vault, archiveId=archive)
             break
         except ClientError as e:
             if e.response["Error"]["Code"] == "RequestLimitExceeded":
@@ -108,9 +108,16 @@ def delete_with_wait(glacier_client, vault, archive):
 
 
 def clean_archives(glacier_client, vault, archive_list):
+    logging.info("Initaiting cleanup of Vault -> {}".format(vault))
     for archive in archive_list:
         logging.info("Deleting Archive - {} - from - Vault-> {}".format(archive, vault))
-        delete_with_wait(glacier_client, vault, archive)
+        delete_with_wait(glacier_client, vault, archive["ArchiveId"])
+
+
+def get_archive_list_from_job(glacier_client, vault, job_id):
+    job_output = glacier_client.get_job_output(vaultName=vault, jobId=job_id)
+    inventory = json.loads(job_output['body'].read().decode('utf-8'))
+    return inventory['ArchiveList']
 
 
 if __name__ == '__main__':
@@ -119,8 +126,11 @@ if __name__ == '__main__':
     region = args.region
     logging.info("Connecting to Glacier.. in region {}".format(region))
 
-    glacier_client = boto3.client("glacier")
-    glacier_resource = boto3.resource("glacier")
+    if args.profile:
+        boto3.setup_default_session(profile_name=args.profile)
+
+    glacier_client = boto3.client("glacier", region_name=region)
+    glacier_resource = boto3.resource("glacier", region_name=region)
 
     try:
         if args.listvault:
@@ -132,20 +142,37 @@ if __name__ == '__main__':
             logging.info("Listing Archives for Vault {}".format(vault))
             status = check_job_for_vault(glacier_client, vault)
             if status:
+                if status["status"] == "Succeeded":
+                    job_id = status["id"]
+                    archive_list = get_archive_list_from_job(glacier_client, vault, job_id)
+                    for number, archive in enumerate(archive_list):
+                        logging.info("{} :-> {}".format(number + 1, archive["ArchiveId"]))
+                else:
+                    logging.info("Job in progress...")
                 exit(0)
             else:
                 exit(-1)
 
         if args.vaultname and args.deleteall:
-            logging.info("Request came for deleting all the items in glacier..")
-            logging.info("Checking Job for the current Vault")
-            job_id = check_job_for_vault(glacier_client, vault)
+            vault = args.vaultname
+            logging.info("Checking Job for the Vault -> {}".format(vault))
 
-            job_output = glacier_client.get_job_output(vaultName=vault, jobId=job_id)
-            inventory = json.loads(job_output['body'].read().decode('utf-8'))
-            archive_list = inventory['ArchiveList']
+            status = check_job_for_vault(glacier_client, vault)
+            if status:
+                if status["status"] == "Succeeded":
+                    job_id = status["id"]
+                    logging.info("Initiating archival retrieval...")
+                    archive_list = get_archive_list_from_job(glacier_client, vault, job_id)
+                    logging.info("Archives fetched. Found {} archives".format(len(archive_list)))
+                    clean_archives(glacier_client, vault, archive_list)
 
-            clean_archives(glacier_client,vault,archive_list)
+                else:
+                    logging.info("Job in progress...")
+                exit(0)
+            else:
+                exit(-1)
+
+
 
     except ClientError as e:
         logging.exception(e)
