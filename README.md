@@ -1,10 +1,12 @@
 # glaciar-vault-cleanup
 
-Cleanup Glacier archives CLI
+Cleanup Glacier archives CLI 
 
 1. List Vaults
 2. List Archives and option to job initiation for inventory retrieval
 3. Clean up glacier archives
+
+Note - This does not support User profile with MFA Enabled
 
 ## How to use
 ```bash
