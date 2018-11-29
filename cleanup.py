@@ -4,6 +4,7 @@ import argparse
 import traceback
 import json
 import time
+import sys
 from botocore.exceptions import ClientError
 
 
@@ -49,7 +50,10 @@ def get_all_vaults(glacier_client):
 
 def validate_yes_no():
     while True:
-        user_input = input("Enter Yes/No: ")
+        if (sys.version_info >(3,0)):
+            user_input = input("Enter Yes/No: ")
+        else:
+            user_input = raw_input("Enter Yes/No: ")
 
         if user_input:
             user_input = str(user_input)
