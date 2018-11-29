@@ -120,7 +120,8 @@ def clean_archives(glacier_client, vault, archive_list):
 
 def get_archive_list_from_job(glacier_client, vault, job_id):
     job_output = glacier_client.get_job_output(vaultName=vault, jobId=job_id)
-    inventory = json.loads(job_output['body'].read().decode('utf-8'))
+    job_body = job_output['body'].read().decode('utf-8')
+    inventory = json.loads(job_body)
     return inventory['ArchiveList']
 
 
