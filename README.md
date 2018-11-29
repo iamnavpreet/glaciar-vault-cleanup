@@ -27,6 +27,13 @@ optional arguments:
 ```
 ## Examples
 ```bash
+List Vaults
+$ ./cleanup.py -profile dev-env -listvault -region eu-west-1
 
+List Archives + Job Status check + Archive List
+$ ./cleanup.py -profile dev-env -region eu-west-1 -vaultname LogArchives -listarchives 
+
+Delete Archives
+$ ./cleanup.py -profile dev-env -region eu-west-1 -vaultname LogArchives -deleteall 
 
 ```
