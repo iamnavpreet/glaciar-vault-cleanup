@@ -6,6 +6,7 @@ import json
 import time
 import sys
 from botocore.exceptions import ClientError
+from multiprocessing import Process
 
 
 def cli_args():
@@ -112,9 +113,10 @@ def delete_with_wait(glacier_client, vault, archive):
 
 
 def clean_archives(glacier_client, vault, archive_list):
+
     logging.info("Initaiting cleanup of Vault -> {}".format(vault))
     for archive in archive_list:
-        logging.info("Deleting Archive - {} - from - Vault-> {}".format(archive, vault))
+        logging.info("Deleting Archive - {} - from - Vault-> {}".format(archive["ArchiveId"], vault))
         delete_with_wait(glacier_client, vault, archive["ArchiveId"])
 
 
@@ -123,6 +125,12 @@ def get_archive_list_from_job(glacier_client, vault, job_id):
     job_body = job_output['body'].read().decode('utf-8')
     inventory = json.loads(job_body)
     return inventory['ArchiveList']
+
+
+def split_list(alist, wanted_parts=10):
+	length = len(alist)
+	return [ alist[i*length // wanted_parts: (i+1)*length // wanted_parts]
+		for i in range(wanted_parts) ]
 
 
 if __name__ == '__main__':
@@ -169,7 +177,16 @@ if __name__ == '__main__':
                     logging.info("Initiating archival retrieval...")
                     archive_list = get_archive_list_from_job(glacier_client, vault, job_id)
                     logging.info("Archives fetched. Found {} archives".format(len(archive_list)))
-                    clean_archives(glacier_client, vault, archive_list)
+
+                    archiveParts = split_list(archive_list, 5)
+                    jobs = []
+                    for archive in archiveParts:
+                        p = Process(target=clean_archives, args=(glacier_client,vault,archive,))
+                        jobs.append(p)
+                        p.start()
+
+                    for jo in jobs:
+                        jo.join()
 
                 else:
                     logging.info("Job in progress...")
