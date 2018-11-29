@@ -98,12 +98,12 @@ def delete_with_wait(glacier_client, vault, archive):
         except ClientError as e:
             if e.response["Error"]["Code"] == "RequestLimitExceeded":
                 count += 1
-                print("Oops.. Limits are there... Sleeping for {} seconds...".format(count * 2))
+                logging.info("Oops.. Limits are there... Sleeping for {} seconds...".format(count * 2))
                 time.sleep(count * 2)
             else:
-                print(" There are issues in the deleting...")
-                print(" Error Details - {}".format(e.response['ResponseMetadata']['HTTPStatusCode']))
-                print(" Error Details - {}".format(e.response['Error']['Code']))
+                logging.info(" There are issues in the deleting...")
+                logging.info(" Error Details - {}".format(e.response['ResponseMetadata']['HTTPStatusCode']))
+                logging.info(" Error Details - {}".format(e.response['Error']['Code']))
                 break
 
 
@@ -171,8 +171,6 @@ if __name__ == '__main__':
                 exit(0)
             else:
                 exit(-1)
-
-
 
     except ClientError as e:
         logging.exception(e)
