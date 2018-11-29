@@ -5,8 +5,8 @@ import traceback
 import json
 import time
 import sys
-from botocore.exceptions import ClientError
 from multiprocessing import Process
+from botocore.exceptions import ClientError
 
 
 def cli_args():
@@ -94,10 +94,11 @@ def check_job_for_vault(glacier_client, vault):
             return False
 
 
-def delete_with_wait(glacier_client, vault, archive):
+def delete_with_wait(vault, archive,region):
     count = 0
     while True:
         try:
+            glacier_client = boto3.client("glacier",region_name=region)
             response = glacier_client.delete_archive(vaultName=vault, archiveId=archive)
             break
         except ClientError as e:
@@ -112,12 +113,12 @@ def delete_with_wait(glacier_client, vault, archive):
                 break
 
 
-def clean_archives(glacier_client, vault, archive_list):
+def clean_archives(vault, archive_list, region):
 
     logging.info("Initaiting cleanup of Vault -> {}".format(vault))
     for archive in archive_list:
         logging.info("Deleting Archive - {} - from - Vault-> {}".format(archive["ArchiveId"], vault))
-        delete_with_wait(glacier_client, vault, archive["ArchiveId"])
+        delete_with_wait(vault, archive["ArchiveId"],region)
 
 
 def get_archive_list_from_job(glacier_client, vault, job_id):
@@ -178,10 +179,11 @@ if __name__ == '__main__':
                     archive_list = get_archive_list_from_job(glacier_client, vault, job_id)
                     logging.info("Archives fetched. Found {} archives".format(len(archive_list)))
 
-                    archiveParts = split_list(archive_list, 5)
+                    archiveParts = split_list(archive_list, 3)
+
                     jobs = []
                     for archive in archiveParts:
-                        p = Process(target=clean_archives, args=(glacier_client,vault,archive,))
+                        p = Process(target=clean_archives, args=(vault,archive,region))
                         jobs.append(p)
                         p.start()
 
